@@ -1,0 +1,145 @@
+SchemaVersion: 2018-07-01
+Owner: "@mongodb/sharding"
+Description: |
+  Runs the reshardCollection command while the cluster (i.e., the primaries) is saturated by a 
+  mixture of CRUD operations to measure the performance impact of resharding operations. It also 
+  verifies the sharded collection after the completion of the resharding operation.
+
+  The workload consists of 5 phases:
+    1. Creating an empty sharded collection, distributed across all shards in the cluster.
+    2. Populating the sharded collection with the initial data.
+    3. Running a mixture of CRUD operations on the collection before resharding the collection.
+    4. Running the CRUD workload as the collection is being resharded. 
+    5. Verifying the resharded collection.
+
+  The inserted documents have the following form:
+    {_id: 1, oldKey: 2, newKey: 3, counter: 0, padding: 'random string of bytes ...'}
+
+  The collection is initially sharded on {oldKey: hashed} and then resharded on {newKey: 1}.
+
+GlobalDefaults:
+  Nop: &Nop {Nop: true}
+
+  Database: &Database test
+  Collection: &Collection Collection0
+  Namespace: &Namespace test.Collection0
+
+  # The exact document size exceeds "ApproxDocumentSize" because of field names and other fields.
+  ApproxDocumentSize: &ApproxDocumentSize 1000 #0  # 10kB
+  WriterThreads: &WriterThreads 20
+  DocumentsPerThread: &DocumentsPerThread 10000 #0 # approximately 20GB of data
+  NumChunks: &NumChunks 400 # approximately 50MB per chunk
+
+  ShardKeyValueMin: &ShardKeyValueMin 1
+  ShardKeyValueMax: &ShardKeyValueMax 1000
+
+  WorkloadThreads: &WorkloadThreads 50
+  WorkloadDuration: &WorkloadDuration 10 minutes # TODO
+
+  OperationRead: &OperationRead
+    OperationName: findOne                                                                                                                                                                      
+    OperationCommand:                                                                                                                                                                           
+      Filter: { 
+        oldKey: { ^RandomDouble: { min: *ShardKeyValueMin, max: *ShardKeyValueMax }},
+        newKey: { ^RandomDouble: { min: *ShardKeyValueMin, max: *ShardKeyValueMax }},
+      }
+
+  OperationUpdate: &OperationUpdate
+    OperationName: updateOne
+    OperationCommand:
+      Filter: { 
+        oldKey: { ^RandomDouble: { min: *ShardKeyValueMin, max: *ShardKeyValueMax }},
+        newKey: { ^RandomDouble: { min: *ShardKeyValueMin, max: *ShardKeyValueMax }},
+      }
+      Update:
+        $inc: {counter: 1}
+
+Clients:
+  # Accommodate for the exceptionally long execution time of the reshardCollection command.
+  ReshardCollection:
+    QueryOptions:
+      maxPoolSize: 1
+      socketTimeoutMS: 3600000 # 1 hour
+
+Actors:
+- Name: CreateShardedCollection
+  Type: AdminCommand
+  Threads: 1
+  Phases:
+  - Repeat: 1
+    Database: admin
+    Operations:
+    - OperationMetricsName: EnableSharding
+      OperationName: AdminCommand
+      OperationCommand: 
+        enableSharding: *Database
+    - OperationMetricsName: ShardCollection
+      OperationName: AdminCommand
+      OperationCommand:
+        shardCollection: *Namespace
+        # Hashed sharding will distribute the chunk ranges evenly across all shards.
+        key: {oldKey: hashed}
+        numInitialChunks: *NumChunks
+  - *Nop
+  - *Nop
+  - *Nop
+  - *Nop
+
+- Name: LoadInitialData
+  Type: CrudActor
+  Database: *Database
+  Threads: *WriterThreads 
+  Phases:
+  - *Nop
+  - Repeat: *DocumentsPerThread
+    Collection: *Collection
+    Operations:
+    - OperationName: insertOne
+      OperationCommand: 
+        Document:
+          oldKey: {^RandomInt: {min: *ShardKeyValueMin, max: *ShardKeyValueMax}}
+          newKey: {^RandomInt: {min: *ShardKeyValueMin, max: *ShardKeyValueMax}}
+          counter: 0
+          padding: {^FastRandomString: {length: *ApproxDocumentSize}}
+  - *Nop
+  - *Nop
+  - *Nop
+
+- Name: RunMixWorkload
+  Type: CrudActor
+  Database: *Database
+  Threads: *WorkloadThreads
+  Phases:
+    OnlyActiveInPhases:
+      Active: [2,3]
+      NopInPhasesUpTo: 4
+      PhaseConfig:
+        GlobalRate: 90%
+        Collection: *Collection
+        Duration: *WorkloadDuration
+        Operations:
+        - *OperationRead
+        - *OperationUpdate
+
+- Name: ReshardCollection
+  Type: AdminCommand
+  Threads: 1
+  ClientName: ReshardCollection
+  Phases:
+  - *Nop
+  - *Nop
+  - *Nop
+  - Repeat: 1
+    Database: admin
+    Operations:
+    - OperationMetricsName: ReshardCollection
+      OperationName: AdminCommand
+      OperationCommand:
+        reshardCollection: *Namespace
+        key: {newKey: 1}
+  - *Nop
+ 
+AutoRun:
+  Requires:
+    mongodb_setup:
+    - shard-lite-all-feature-flags
