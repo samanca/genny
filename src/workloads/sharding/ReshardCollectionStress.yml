@@ -24,19 +24,17 @@ GlobalDefaults:
   Namespace: &Namespace test.Collection0
 
   # The exact document size exceeds "ApproxDocumentSize" because of field names and other fields.
-  # ApproxDocumentSize: &ApproxDocumentSize 10000  # 10kB
-  ApproxDocumentSize: &ApproxDocumentSize 1000  # 1KB
-  WriterThreads: &WriterThreads 20
-  # DocumentsPerThread: &DocumentsPerThread 100000 # approximately 20GB of data
-  DocumentsPerThread: &DocumentsPerThread 10000 # approximately 200MB of data
+  ApproxDocumentSize: &ApproxDocumentSize 10000  # 10kB
+  WriterThreads: &WriterThreads 50
+  DocumentsPerThread: &DocumentsPerThread 100000 # approximately 20GB of data
   NumChunks: &NumChunks 400 # approximately 50MB per chunk
 
   ShardKeyValueMin: &ShardKeyValueMin 1
   ShardKeyValueMax: &ShardKeyValueMax 1000
 
-  WorkloadThreads: &WorkloadThreads 50
+  WorkloadThreads: &WorkloadThreads 100
   WorkloadDuration: &WorkloadDuration 10 minutes
-  WorkloadRateLimit: &WorkloadRateLimit 90%
+  # WorkloadRateLimit: &WorkloadRateLimit 90%
 
   ReadWriteOperations: &ReadWriteOperations
   - OperationName: findOne 
@@ -112,7 +110,7 @@ Actors:
   - *Nop
   - *Nop
   - MetricsName: BeforeResharding
-    GlobalRate: *WorkloadRateLimit
+    # GlobalRate: *WorkloadRateLimit
     Duration: *WorkloadDuration 
     Threads: *WorkloadThreads 
     Collection: *Collection
@@ -123,7 +121,7 @@ Actors:
     Blocking: None
     Operations: *ReadWriteOperations
   - MetricsName: AfterResharding
-    GlobalRate: *WorkloadRateLimit
+    # GlobalRate: *WorkloadRateLimit
     Duration: *WorkloadDuration
     Threads: *WorkloadThreads
     Collection: *Collection
