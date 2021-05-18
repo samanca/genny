@@ -27,7 +27,7 @@ GlobalDefaults:
   ApproxDocumentSize: &ApproxDocumentSize 10000  # 10kB
   WriterThreads: &WriterThreads 50
   DocumentsPerThread: &DocumentsPerThread 100000 # approximately 20GB of data
-  NumChunks: &NumChunks 400 # approximately 50MB per chunk
+  NumChunks: &NumChunks 40 # approximately 500B per chunk
 
   ShardKeyValueMin: &ShardKeyValueMin 1
   ShardKeyValueMax: &ShardKeyValueMax 1000
@@ -57,7 +57,7 @@ Clients:
   ReshardCollection:
     QueryOptions:
       maxPoolSize: 1
-      socketTimeoutMS: 3600000 # 1 hour
+      socketTimeoutMS: 18000000 # 5 hours
 
 Actors:
 - Name: CreateShardedCollection
