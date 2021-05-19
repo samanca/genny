@@ -25,16 +25,15 @@ GlobalDefaults:
 
   # The exact document size exceeds "ApproxDocumentSize" because of field names and other fields.
   ApproxDocumentSize: &ApproxDocumentSize 10000  # 10kB
-  WriterThreads: &WriterThreads 50
-  DocumentsPerThread: &DocumentsPerThread 100000 # approximately 20GB of data
-  NumChunks: &NumChunks 40 # approximately 500B per chunk
+  WriterThreads: &WriterThreads 200
+  DocumentsPerThread: &DocumentsPerThread 10000 # approximately 20GB of data
+  NumChunks: &NumChunks 300 # approximately 64MB per chunk
 
   ShardKeyValueMin: &ShardKeyValueMin 1
   ShardKeyValueMax: &ShardKeyValueMax 1000
 
-  WorkloadThreads: &WorkloadThreads 100
+  WorkloadThreads: &WorkloadThreads 500
   WorkloadDuration: &WorkloadDuration 10 minutes
-  # WorkloadRateLimit: &WorkloadRateLimit 90%
 
   ReadWriteOperations: &ReadWriteOperations
   - OperationName: findOne 
@@ -53,11 +52,14 @@ GlobalDefaults:
       ThrowOnFailure: false
 
 Clients:
+  Default:
+    QueryOptions:
+      maxPoolSize: 1000
   # Accommodate for the exceptionally long execution time of the reshardCollection command.
   ReshardCollection:
     QueryOptions:
       maxPoolSize: 1
-      socketTimeoutMS: 18000000 # 5 hours
+      socketTimeoutMS: 7200000 # 2 hours
 
 Actors:
 - Name: CreateShardedCollection
@@ -106,24 +108,20 @@ Actors:
 - Name: RunMixWorkload
   Type: CrudActor
   Database: *Database
+  Threads: *WorkloadThreads
   Phases:
   - *Nop
   - *Nop
   - MetricsName: BeforeResharding
-    # GlobalRate: *WorkloadRateLimit
     Duration: *WorkloadDuration 
-    Threads: *WorkloadThreads 
     Collection: *Collection
     Operations: *ReadWriteOperations
   - MetricsName: DuringResharding
-    Threads: *WorkloadThreads
     Collection: *Collection
     Blocking: None
     Operations: *ReadWriteOperations
   - MetricsName: AfterResharding
-    # GlobalRate: *WorkloadRateLimit
     Duration: *WorkloadDuration
-    Threads: *WorkloadThreads
     Collection: *Collection
     Operations: *ReadWriteOperations
 
@@ -148,4 +146,5 @@ Actors:
 AutoRun:
   Requires:
     mongodb_setup:
-    - shard-lite-all-feature-flags
+    - shard
+    - shard-lite
